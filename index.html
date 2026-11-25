@@ -1472,6 +1472,11 @@ document.addEventListener('input',function(e){
 /* ==================== INIT ==================== */
 loadDB();
 render();
+  
+/* ثبت Service Worker */
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js');
+}
 </script>
 </body>
 </html>
