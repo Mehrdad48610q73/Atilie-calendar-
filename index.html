@@ -634,6 +634,343 @@ function dayView(){
   else ev.forEach(function(e){h+=evRow(e)});
   return h+'</div>';
   }
+  
+/* ==================== RESERVATION FORM ==================== */
+function newDraft(prefillDate){
+  return {
+    id:null,customerId:null,status:'active',
+    cust:{firstName:'',lastName:'',mobile:'',bookerName:'',bookerMobile:'',phone2:'',notes:''},
+    title:'',type:DB.ceremonyTypes[0]||'عروسی',
+    date:prefillDate||{jy:TODAY.jy,jm:TODAY.jm,jd:TODAY.jd},
+    startTime:'',endTime:'',
+    hall:{name:'',address:'',phone:''},
+    couple:'',notes:'',
+    photo:{date:null,start:'',end:'',place:'',notes:''},
+    video:{date:null,start:'',end:'',place:'',notes:''},
+    formal:{date:null,start:'',end:'',place:'',notes:''},
+    contractAmount:0,
+    payments:[],
+    project:{stage:0,editStart:null,firstDelivery:null,finalDelivery:null,outputs:[],notes:''},
+    staff:{photographer:'',videographer:'',teamSize:'',equipment:''},
+    createdAt:new Date().toISOString()
+  };
+}
+function draftFromRes(r){
+  var c=getCust(r.customerId)||{};
+  var d=JSON.parse(JSON.stringify(r));
+  d.cust={
+    firstName:c.firstName||'',lastName:c.lastName||'',
+    mobile:c.mobile||'',bookerName:c.bookerName||'',
+    bookerMobile:c.bookerMobile||'',phone2:c.phone2||'',notes:c.notes||''
+  };
+  if(!d.photo)d.photo={date:null,start:'',end:'',place:'',notes:''};
+  if(!d.video)d.video={date:null,start:'',end:'',place:'',notes:''};
+  if(!d.formal)d.formal={date:null,start:'',end:'',place:'',notes:''};
+  if(!d.hall)d.hall={name:'',address:'',phone:''};
+  if(!d.staff)d.staff={photographer:'',videographer:'',teamSize:'',equipment:''};
+  if(!d.payments)d.payments=[];
+  if(!d.project)d.project={stage:0,editStart:null,firstDelivery:null,finalDelivery:null,outputs:[],notes:''};
+  if(!d.project.outputs)d.project.outputs=[];
+  return d;
+}
+function dv(d){return d?fmtJShort(d):''}
+function dateField(label,name,val,required){
+  var id='f_'+name;
+  return '<div class="field"><label>'+label+(required?' *':'')+'</label><div class="date-wrap">'+
+    '<input id="'+id+'" data-dfield="'+name+'" type="text" inputmode="numeric" placeholder="۱۴۰۳/۰۵/۱۲" value="'+esc(dv(val))+'">'+
+    '<button type="button" class="date-btn" data-act="pickDate" data-input="'+id+'">📅</button>'+
+  '</div></div>';
+}
+function vResForm(id){
+  var isEdit=!!id;
+  if(!state.draft||(isEdit&&state.draft.id!==id)||(!isEdit&&state.draft.id!==null)){
+    state.draft=isEdit?draftFromRes(getRes(id)):newDraft();
+  }
+  var d=state.draft;
+  var h=pageHead(isEdit?'ویرایش رزرو':'ثبت رزرو جدید',isEdit?'':'فرم کامل اطلاعات',
+    '<button class="btn btn-sm" data-act="cancelForm">انصراف</button>')+'<div class="content"><form id="resForm">';
+  h+='<div class="card">';
+  h+='<div class="section-title">👤 اطلاعات مشتری</div>';
+  h+='<div class="frow">'+
+    '<div class="field"><label>نام *</label><input name="custFirst" value="'+esc(d.cust.firstName)+'" required></div>'+
+    '<div class="field"><label>نام خانوادگی *</label><input name="custLast" value="'+esc(d.cust.lastName)+'" required></div>'+
+  '</div>';
+  h+='<div class="field"><label>شماره موبایل مشتری *</label><input name="custMobile" inputmode="tel" value="'+esc(d.cust.mobile)+'" required placeholder="09123456789"></div>';
+  h+='<div class="frow">'+
+    '<div class="field"><label>نام رزروکننده</label><input name="custBooker" value="'+esc(d.cust.bookerName)+'"></div>'+
+    '<div class="field"><label>موبایل رزروکننده</label><input name="custBookerMobile" inputmode="tel" value="'+esc(d.cust.bookerMobile)+'"></div>'+
+  '</div>';
+  h+='<div class="field"><label>شماره تماس دوم (اختیاری)</label><input name="custPhone2" inputmode="tel" value="'+esc(d.cust.phone2)+'"></div>';
+  h+='<div class="field"><label>توضیحات مشتری</label><textarea name="custNotes">'+esc(d.cust.notes)+'</textarea></div>';
+  h+='</div>';
+  h+='<div class="card">';
+  h+='<div class="section-title">💍 اطلاعات مراسم</div>';
+  h+='<div class="field"><label>نام مراسم</label><input name="title" value="'+esc(d.title)+'" placeholder="مثلاً عروسی سارا و امیر"></div>';
+  h+='<div class="field"><label>نوع مراسم *</label><select name="type">'+
+    DB.ceremonyTypes.map(function(t){return '<option'+(d.type===t?' selected':'')+'>'+esc(t)+'</option>'}).join('')+
+    '</select></div>';
+  h+='<div class="frow">'+dateField('تاریخ مراسم','date',d.date,true)+'</div>';
+  h+='<div class="frow">'+
+    '<div class="field"><label>ساعت شروع</label><input name="startTime" value="'+esc(d.startTime)+'" placeholder="18:00"></div>'+
+    '<div class="field"><label>ساعت پایان</label><input name="endTime" value="'+esc(d.endTime)+'" placeholder="23:00"></div>'+
+  '</div>';
+  h+='<div class="frow">'+
+    '<div class="field"><label>نام تالار / محل</label><input name="hallName" value="'+esc(d.hall.name)+'"></div>'+
+    '<div class="field"><label>تلفن تالار</label><input name="hallPhone" inputmode="tel" value="'+esc(d.hall.phone)+'"></div>'+
+  '</div>';
+  h+='<div class="field"><label>آدرس دقیق</label><textarea name="hallAddress">'+esc(d.hall.address)+'</textarea></div>';
+  h+='<div class="field"><label>نام عروس و داماد</label><input name="couple" value="'+esc(d.couple)+'"></div>';
+  h+='<div class="field"><label>توضیحات مراسم</label><textarea name="notes">'+esc(d.notes)+'</textarea></div>';
+  h+='</div>';
+  function sessBlock(key,label,icon){
+    var s=d[key];
+    return '<div class="card"><div class="section-title">'+icon+' '+label+'</div>'+
+      '<div class="frow">'+dateField('تاریخ',''+key+'Date',s.date)+'</div>'+
+      '<div class="frow">'+
+        '<div class="field"><label>ساعت شروع</label><input name="'+key+'Start" value="'+esc(s.start)+'" placeholder="10:00"></div>'+
+        '<div class="field"><label>ساعت پایان</label><input name="'+key+'End" value="'+esc(s.end)+'" placeholder="14:00"></div>'+
+      '</div>'+
+      '<div class="field"><label>محل</label><input name="'+key+'Place" value="'+esc(s.place)+'"></div>'+
+      '<div class="field"><label>توضیحات</label><textarea name="'+key+'Notes">'+esc(s.notes)+'</textarea></div>'+
+    '</div>';
+  }
+  h+=sessBlock('photo','برنامه عکاسی','📷');
+  h+=sessBlock('video','برنامه فیلم‌برداری','🎥');
+  h+=sessBlock('formal','برنامه فرمالیته','✨');
+  h+='<div class="card"><div class="section-title">💰 اطلاعات مالی</div>';
+  h+='<div class="field"><label>مبلغ کل قرارداد (تومان)</label><input name="contractAmount" inputmode="numeric" value="'+(d.contractAmount||'')+'" placeholder="0"></div>';
+  h+='<div class="hr"></div>';
+  h+='<div class="row-between" style="margin-bottom:10px"><b style="font-size:13px">پرداخت‌ها</b>'+
+    '<button type="button" class="btn btn-sm btn-primary" data-act="addPaymentDraft">➕ ثبت پرداخت</button></div>';
+  if(!d.payments.length)h+='<div style="font-size:12px;color:var(--muted);padding:8px 0">پرداختی ثبت نشده</div>';
+  else{
+    h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>مبلغ</th><th>تاریخ</th><th>روش</th><th></th></tr></thead><tbody>';
+    d.payments.forEach(function(p,i){
+      h+='<tr><td class="money">'+money(p.amount)+'</td><td>'+fmtJShort(p.date)+'</td><td>'+esc(p.method||'')+'</td>'+
+        '<td><button type="button" class="btn btn-sm btn-danger" data-act="delDraftPayment" data-i="'+i+'">حذف</button></td></tr>';
+    });
+    h+='</tbody></table></div>';
+  }
+  h+='<div class="hr"></div>';
+  h+='<div class="kv"><span>جمع پرداخت‌ها</span><b class="money">'+money(paidOf(d))+' تومان</b></div>';
+  h+='<div class="kv"><span>مانده حساب</span><b class="money" style="color:var(--danger)">'+money(remainingOf(d))+' تومان</b></div>';
+  h+='</div>';
+  h+='<div class="card"><div class="section-title">🎬 پروژه و تحویل</div>';
+  h+='<div class="field"><label>مرحله پروژه</label><select name="stage">'+
+    STAGES.map(function(s,i){return '<option value="'+i+'"'+(d.project.stage===i?' selected':'')+'>'+s+'</option>'}).join('')+
+    '</select></div>';
+  h+='<div class="frow">'+dateField('شروع تدوین','editStart',d.project.editStart)+'</div>';
+  h+='<div class="frow">'+dateField('تحویل اولیه','firstDelivery',d.project.firstDelivery)+'</div>';
+  h+='<div class="frow">'+dateField('تحویل نهایی','finalDelivery',d.project.finalDelivery)+'</div>';
+  h+='<div class="field"><label>توضیحات پروژه</label><textarea name="projNotes">'+esc(d.project.notes)+'</textarea></div>';
+  h+='<div class="field"><label>عکاس مسئول</label><input name="photographer" value="'+esc(d.staff.photographer)+'"></div>';
+  h+='<div class="field"><label>فیلم‌بردار مسئول</label><input name="videographer" value="'+esc(d.staff.videographer)+'"></div>';
+  h+='<div class="frow">'+
+    '<div class="field"><label>تعداد تیم اجرایی</label><input name="teamSize" inputmode="numeric" value="'+esc(d.staff.teamSize)+'"></div>'+
+    '<div class="field"><label>تجهیزات موردنیاز</label><input name="equipment" value="'+esc(d.staff.equipment)+'"></div>'+
+  '</div>';
+  h+='</div>';
+  h+='<button type="submit" class="btn btn-primary btn-block" style="padding:14px;font-size:15px">💾 '+(isEdit?'ذخیره تغییرات':'ثبت رزرو')+'</button>';
+  h+='<div style="height:20px"></div></form></div>';
+  return h;
+}
+function collectForm(){
+  var d=state.draft;
+  var f=document.getElementById('resForm');
+  function v(n){var e=f.querySelector('[name="'+n+'"]');return e?e.value.trim():''}
+  function dt(n){return parseJ(v(n))}
+  d.cust.firstName=v('custFirst');d.cust.lastName=v('custLast');
+  d.cust.mobile=v('custMobile');d.cust.bookerName=v('custBooker');
+  d.cust.bookerMobile=v('custBookerMobile');d.cust.phone2=v('custPhone2');
+  d.cust.notes=v('custNotes');
+  d.title=v('title');d.type=v('type');d.startTime=v('startTime');d.endTime=v('endTime');
+  d.date=dt('date');
+  d.hall.name=v('hallName');d.hall.phone=v('hallPhone');d.hall.address=v('hallAddress');
+  d.couple=v('couple');d.notes=v('notes');
+  ['photo','video','formal'].forEach(function(k){
+    d[k].date=dt(k+'Date');
+    d[k].start=v(k+'Start');d[k].end=v(k+'End');
+    d[k].place=v(k+'Place');d[k].notes=v(k+'Notes');
+  });
+  d.contractAmount=Number(enDigits(v('contractAmount')).replace(/\D/g,''))||0;
+  d.project.stage=Number(v('stage'))||0;
+  d.project.editStart=dt('editStart');
+  d.project.firstDelivery=dt('firstDelivery');
+  d.project.finalDelivery=dt('finalDelivery');
+  d.project.notes=v('projNotes');
+  d.staff.photographer=v('photographer');d.staff.videographer=v('videographer');
+  d.staff.teamSize=v('teamSize');d.staff.equipment=v('equipment');
+  return d;
+}
+function checkConflict(d){
+  var conflicts=[];
+  function tOverlap(a1,a2,b1,b2){
+    var x=parseTime(a1),y=parseTime(a2),z=parseTime(b1),w=parseTime(b2);
+    if(x===null||z===null)return false;
+    if(y===null)y=x+120; if(w===null)w=z+120;
+    return x<w&&z<y;
+  }
+  var mine=[];
+  if(d.date)mine.push({k:'ceremony',d:d.date,s:d.startTime,e:d.endTime,l:'مراسم'});
+  if(d.photo.date)mine.push({k:'photo',d:d.photo.date,s:d.photo.start,e:d.photo.end,l:'عکاسی'});
+  if(d.video.date)mine.push({k:'video',d:d.video.date,s:d.video.start,e:d.video.end,l:'فیلم‌برداری'});
+  if(d.formal.date)mine.push({k:'formal',d:d.formal.date,s:d.formal.start,e:d.formal.end,l:'فرمالیته'});
+  mine.forEach(function(m){
+    activeRes().forEach(function(r){
+      if(r.id===d.id)return;
+      var others=[];
+      if(r.date)others.push({d:r.date,s:r.startTime,e:r.endTime,l:'مراسم'});
+      if(r.photo&&r.photo.date)others.push({d:r.photo.date,s:r.photo.start,e:r.photo.end,l:'عکاسی'});
+      if(r.video&&r.video.date)others.push({d:r.video.date,s:r.video.start,e:r.video.end,l:'فیلم‌برداری'});
+      if(r.formal&&r.formal.date)others.push({d:r.formal.date,s:r.formal.start,e:r.formal.end,l:'فرمالیته'});
+      others.forEach(function(o){
+        if(dkey(o.d)===dkey(m.d)&&tOverlap(m.s,m.e,o.s,o.e)){
+          var c=getCust(r.customerId);
+          conflicts.push(m.l+' با '+o.l+' «'+(c?fullName(c):'')+'» تداخل دارد ('+fmtJShort(m.d)+')');
+        }
+      });
+    });
+  });
+  return conflicts;
+}
+function saveReservation(){
+  var d=collectForm();
+  if(!d.cust.firstName||!d.cust.lastName){toast('نام و نام خانوادگی مشتری الزامی است');return}
+  if(!d.cust.mobile||normalizeMobile(d.cust.mobile).length<10){toast('شماره موبایل معتبر وارد کنید');return}
+  if(!d.date){toast('تاریخ مراسم را صحیح وارد کنید (مثال: ۱۴۰۳/۰۵/۱۲)');return}
+  var conf=checkConflict(d);
+  if(conf.length){
+    if(!confirm('⚠️ هشدار تداخل:\n\n'+conf.slice(0,4).join('\n')+'\n\nبا این وجود ذخیره شود؟'))return;
+  }
+  var cust=upsertCustomer({
+    id:d.customerId,
+    firstName:d.cust.firstName,lastName:d.cust.lastName,
+    mobile:d.cust.mobile,bookerName:d.cust.bookerName,
+    bookerMobile:d.cust.bookerMobile,phone2:d.cust.phone2,notes:d.cust.notes
+  });
+  var existing=d.id?getRes(d.id):null;
+  var rec={
+    id:d.id||uid(),
+    customerId:cust.id,
+    title:d.title,type:d.type,date:d.date,
+    startTime:d.startTime,endTime:d.endTime,
+    hall:d.hall,couple:d.couple,notes:d.notes,
+    photo:d.photo,video:d.video,formal:d.formal,
+    contractAmount:d.contractAmount,
+    payments:d.payments,
+    project:d.project,
+    staff:d.staff,
+    status:'active',
+    createdAt:existing?existing.createdAt:new Date().toISOString(),
+    updatedAt:new Date().toISOString()
+  };
+  if(existing){
+    var idx=DB.reservations.indexOf(existing);
+    DB.reservations[idx]=rec;
+  } else {
+    DB.reservations.push(rec);
+  }
+  saveDB();
+  state.draft=null;
+  toast(existing?'تغییرات ذخیره شد ✅':'رزرو با موفقیت ثبت شد ✅');
+  go('resdetail',{id:rec.id});
+}
+
+/* ==================== RESERVATION DETAIL ==================== */
+function vResDetail(id){
+  var r=getRes(id);
+  if(!r)return pageHead('یافت نشد','')+'<div class="content"><div class="empty"><p>رزرو حذف شده است</p></div></div>';
+  var c=getCust(r.customerId);
+  var f=finStatus(r);
+  var h=pageHead('جزئیات رزرو',esc(c?fullName(c):''),
+    '<button class="btn btn-sm" data-act="go" data-view="calendar">تقویم</button>')+'<div class="content">';
+  h+='<div class="card"><div class="row-between">'+
+    '<div><div style="font-size:16px;font-weight:700">'+esc(r.title||r.type)+'</div>'+
+    '<div style="font-size:12px;color:var(--muted)">'+fmtJ(r.date,true)+'</div></div>'+
+    '<span class="tag p">'+esc(r.type)+'</span>'+
+  '</div><div class="hr"></div>';
+  h+='<div class="kv"><span>ساعت</span><b>'+niceTime(r.startTime)+(r.endTime?' تا '+niceTime(r.endTime):'')+'</b></div>';
+  if(r.hall&&r.hall.name)h+='<div class="kv"><span>تالار</span><b>'+esc(r.hall.name)+'</b></div>';
+  if(r.hall&&r.hall.address)h+='<div class="kv"><span>آدرس</span><b>'+esc(r.hall.address)+'</b></div>';
+  if(r.couple)h+='<div class="kv"><span>عروس و داماد</span><b>'+esc(r.couple)+'</b></div>';
+  if(r.notes)h+='<div class="kv"><span>توضیحات</span><b>'+esc(r.notes)+'</b></div>';
+  h+='</div>';
+  h+='<div class="card"><div class="card-h"><h3>👤 مشتری</h3>'+
+    '<button class="link" data-act="openCust" data-id="'+(c?c.id:'')+'">پرونده کامل</button></div>';
+  if(c){
+    h+='<div class="kv"><span>نام</span><b>'+esc(fullName(c))+'</b></div>';
+    h+=phoneRow('موبایل',c.mobile);
+    if(c.bookerName)h+='<div class="kv"><span>رزروکننده</span><b>'+esc(c.bookerName)+'</b></div>';
+    if(c.bookerMobile)h+=phoneRow('موبایل رزروکننده',c.bookerMobile);
+    if(c.phone2)h+=phoneRow('تماس دوم',c.phone2);
+  }
+  h+='</div>';
+  [['photo','📷 عکاسی'],['video','🎥 فیلم‌برداری'],['formal','✨ فرمالیته']].forEach(function(pair){
+    var s=r[pair[0]];
+    if(!s||!s.date)return;
+    h+='<div class="card"><div class="section-title">'+pair[1]+'</div>'+
+      '<div class="kv"><span>تاریخ</span><b>'+fmtJ(s.date,true)+'</b></div>'+
+      '<div class="kv"><span>ساعت</span><b>'+niceTime(s.start)+(s.end?' تا '+niceTime(s.end):'')+'</b></div>'+
+      (s.place?'<div class="kv"><span>محل</span><b>'+esc(s.place)+'</b></div>':'')+
+      (s.notes?'<div class="kv"><span>توضیحات</span><b>'+esc(s.notes)+'</b></div>':'')+
+    '</div>';
+  });
+  h+='<div class="card"><div class="card-h"><h3>💰 مالی</h3><span class="tag '+f.cls+'">'+f.label+'</span></div>';
+  h+='<div class="kv"><span>مبلغ قرارداد</span><b class="money">'+money(r.contractAmount)+' تومان</b></div>';
+  h+='<div class="kv"><span>جمع پرداخت‌ها</span><b class="money" style="color:var(--ok)">'+money(paidOf(r))+' تومان</b></div>';
+  h+='<div class="kv"><span>مانده حساب</span><b class="money" style="color:var(--danger)">'+money(remainingOf(r))+' تومان</b></div>';
+  if((r.payments||[]).length){
+    h+='<div class="hr"></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>مبلغ</th><th>تاریخ</th><th>روش</th><th>توضیح</th><th></th></tr></thead><tbody>';
+    r.payments.forEach(function(p,i){
+      h+='<tr><td class="money">'+money(p.amount)+'</td><td>'+fmtJShort(p.date)+'</td><td>'+esc(p.method||'')+'</td><td>'+esc(p.note||'—')+'</td>'+
+        '<td><button class="btn btn-sm btn-danger" data-act="delPayment" data-id="'+r.id+'" data-i="'+i+'">حذف</button></td></tr>';
+    });
+    h+='</tbody></table></div>';
+  }
+  h+='<div class="row" style="margin-top:12px">'+
+    '<button class="btn btn-primary btn-sm" data-act="addPayment" data-id="'+r.id+'">➕ ثبت پرداخت</button>'+
+    '<button class="btn btn-sm" data-act="printReceipt" data-id="'+r.id+'">🖨 رسید بیعانه</button>'+
+  '</div></div>';
+  h+='<div class="card"><div class="card-h"><h3>🎬 پروژه</h3></div>';
+  h+='<div class="field"><label>مرحله پروژه</label><select data-act="setStage" data-id="'+r.id+'">'+
+    STAGES.map(function(s,i){return '<option value="'+i+'"'+(r.project.stage===i?' selected':'')+'>'+s+'</option>'}).join('')+
+    '</select></div>';
+  if(r.project.editStart)h+='<div class="kv"><span>شروع تدوین</span><b>'+fmtJ(r.project.editStart)+'</b></div>';
+  if(r.project.firstDelivery)h+='<div class="kv"><span>تحویل اولیه</span><b>'+fmtJ(r.project.firstDelivery)+'</b></div>';
+  if(r.project.finalDelivery)h+='<div class="kv"><span>تحویل نهایی</span><b>'+fmtJ(r.project.finalDelivery)+'</b></div>';
+  if(r.project.notes)h+='<div class="kv"><span>توضیحات</span><b>'+esc(r.project.notes)+'</b></div>';
+  h+='<div class="hr"></div><div class="row-between" style="margin-bottom:8px"><b style="font-size:13px">خروجی‌ها</b>'+
+    '<button class="btn btn-sm btn-primary" data-act="addOutput" data-id="'+r.id+'">➕ خروجی</button></div>';
+  if(!(r.project.outputs||[]).length)h+='<div style="font-size:12px;color:var(--muted)">خروجی ثبت نشده</div>';
+  else (r.project.outputs||[]).forEach(function(o,i){
+    var cls=o.status==='تحویل شده'?'g':o.status==='آماده'?'t':o.status==='در حال انجام'?'w':'m';
+    h+='<div class="kv"><span>'+esc(o.type)+'</span><b><span class="tag '+cls+'">'+esc(o.status)+'</span> '+
+      '<button class="btn btn-sm btn-danger" data-act="delOutput" data-id="'+r.id+'" data-i="'+i+'" style="padding:2px 8px">×</button></b></div>';
+  });
+  h+='</div>';
+  if(r.staff&&(r.staff.photographer||r.staff.videographer||r.staff.teamSize||r.staff.equipment)){
+    h+='<div class="card"><div class="section-title">👥 تیم اجرایی</div>';
+    if(r.staff.photographer)h+='<div class="kv"><span>عکاس</span><b>'+esc(r.staff.photographer)+'</b></div>';
+    if(r.staff.videographer)h+='<div class="kv"><span>فیلم‌بردار</span><b>'+esc(r.staff.videographer)+'</b></div>';
+    if(r.staff.teamSize)h+='<div class="kv"><span>تعداد تیم</span><b>'+fa(r.staff.teamSize)+' نفر</b></div>';
+    if(r.staff.equipment)h+='<div class="kv"><span>تجهیزات</span><b>'+esc(r.staff.equipment)+'</b></div>';
+    h+='</div>';
+  }
+  h+='<div class="row" style="margin-bottom:16px">'+
+    '<button class="btn btn-primary" data-act="editRes" data-id="'+r.id+'">✏️ ویرایش</button>'+
+    '<button class="btn" data-act="printRes" data-id="'+r.id+'">🖨 چاپ برگه</button>'+
+    '<button class="btn btn-danger" data-act="delRes" data-id="'+r.id+'">🗑 حذف</button>'+
+  '</div></div>';
+  return h;
+}
+function phoneRow(label,phone){
+  if(!phone)return '';
+  var p=enDigits(phone).replace(/\D/g,'');
+  return '<div class="kv"><span>'+label+'</span><b>'+
+    '<a href="tel:'+p+'" style="text-decoration:none;color:var(--purple)">'+fa(phone)+'</a> '+
+    '<button class="btn btn-sm" data-act="copy" data-val="'+esc(phone)+'" style="padding:2px 8px;font-size:11px">کپی</button>'+
+  '</b></div>';
+    }
 </script>
 </body>
 </html>
