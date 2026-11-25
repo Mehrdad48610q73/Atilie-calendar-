@@ -971,6 +971,507 @@ function phoneRow(label,phone){
     '<button class="btn btn-sm" data-act="copy" data-val="'+esc(phone)+'" style="padding:2px 8px;font-size:11px">کپی</button>'+
   '</b></div>';
     }
+  
+/* ==================== CUSTOMERS ==================== */
+function vCustomers(){
+  var q=state.search.trim().toLowerCase();
+  var list=DB.customers.slice();
+  if(q){
+    list=list.filter(function(c){
+      return (fullName(c)+' '+c.mobile+' '+(c.bookerName||'')+' '+(c.bookerMobile||'')).toLowerCase().indexOf(q)>=0;
+    });
+  }
+  list.sort(function(a,b){return (b.createdAt||'').localeCompare(a.createdAt||'')});
+  var h='<div class="search-box"><input id="searchInput" placeholder="جستجوی نام، موبایل..." data-act="searchCust"><span class="ic">🔍</span></div>';
+  if(!list.length)return h+'<div class="empty"><div class="em">👥</div><p>مشتری‌ای یافت نشد</p></div>';
+  list.forEach(function(c){
+    var rs=activeRes().filter(function(r){return r.customerId===c.id});
+    var totalDue=rs.reduce(function(s,r){return s+Math.max(0,remainingOf(r))},0);
+    h+='<div class="item" data-act="openCust" data-id="'+c.id+'">'+
+      '<div class="av" style="background:var(--purple-l);color:var(--purple)">'+esc((c.firstName||'?').charAt(0))+'</div>'+
+      '<div class="info"><b>'+esc(fullName(c))+'</b><span>'+fa(c.mobile||'—')+' · '+fa(rs.length)+' رزرو</span></div>'+
+      (totalDue>0?'<div class="side"><span class="tag d">'+money(totalDue)+'</span></div>':'<div class="side"><span class="tag g">تسویه</span></div>')+
+    '</div>';
+  });
+  return h;
+}
+function vCustDetail(id){
+  var c=getCust(id);
+  if(!c)return pageHead('مشتری','')+'<div class="content"><div class="empty"><p>یافت نشد</p></div></div>';
+  var rs=DB.reservations.filter(function(r){return r.customerId===id});
+  var act=rs.filter(function(r){return r.status!=='cancelled'});
+  var totalContract=act.reduce(function(s,r){return s+(r.contractAmount||0)},0);
+  var totalPaid=act.reduce(function(s,r){return s+paidOf(r)},0);
+  var h=pageHead('پرونده مشتری',esc(fullName(c)),
+    '<button class="btn btn-sm btn-primary" data-act="newForCust" data-id="'+id+'">➕ رزرو</button>')+'<div class="content">';
+  h+='<div class="card"><div class="section-title">👤 اطلاعات تماس</div>';
+  h+=phoneRow('موبایل',c.mobile);
+  if(c.bookerName)h+='<div class="kv"><span>رزروکننده</span><b>'+esc(c.bookerName)+'</b></div>';
+  if(c.bookerMobile)h+=phoneRow('موبایل رزروکننده',c.bookerMobile);
+  if(c.phone2)h+=phoneRow('تماس دوم',c.phone2);
+  if(c.notes)h+='<div class="kv"><span>یادداشت</span><b>'+esc(c.notes)+'</b></div>';
+  h+='</div>';
+  h+='<div class="card"><div class="section-title">💰 خلاصه مالی</div>'+
+    '<div class="kv"><span>مجموع قرارداد</span><b class="money">'+money(totalContract)+' تومان</b></div>'+
+    '<div class="kv"><span>مجموع پرداخت</span><b class="money" style="color:var(--ok)">'+money(totalPaid)+' تومان</b></div>'+
+    '<div class="kv"><span>مانده</span><b class="money" style="color:var(--danger)">'+money(totalContract-totalPaid)+' تومان</b></div>'+
+  '</div>';
+  h+='<div class="card"><div class="section-title">📋 سوابق رزرو ('+fa(rs.length)+')</div>';
+  if(!rs.length)h+='<div class="empty"><p>رزروی ثبت نشده</p></div>';
+  rs.sort(function(a,b){return dnum(b.date)-dnum(a.date)}).forEach(function(r){
+    var f=finStatus(r);
+    h+='<div class="item" data-act="openRes" data-id="'+r.id+'">'+
+      '<div class="av" style="background:var(--teal-l);color:#2B9B8A">💍</div>'+
+      '<div class="info"><b>'+esc(r.title||r.type)+'</b><span>'+fmtJ(r.date)+' · '+STAGES[r.project.stage||0]+'</span></div>'+
+      '<div class="side"><span class="tag '+f.cls+'">'+f.label+'</span></div></div>';
+  });
+  h+='</div>';
+  h+='<div class="row"><button class="btn btn-danger" data-act="delCust" data-id="'+id+'">🗑 حذف مشتری</button></div>';
+  return h+'</div>';
+}
+
+/* ==================== CEREMONIES ==================== */
+function vCeremonies(){
+  var list=activeRes().filter(function(r){return r.date}).sort(function(a,b){return dnum(a.date)-dnum(b.date)});
+  var q=state.search.trim().toLowerCase();
+  if(q)list=list.filter(function(r){
+    var c=getCust(r.customerId);
+    return ((r.title||'')+' '+(r.type||'')+' '+(r.hall.name||'')+' '+(c?fullName(c):'')).toLowerCase().indexOf(q)>=0;
+  });
+  var h='<div class="search-box"><input id="searchInput" placeholder="جستجوی مراسم، تالار، مشتری..." data-act="searchCer"><span class="ic">🔍</span></div>';
+  if(!list.length)return h+'<div class="empty"><div class="em">💍</div><p>مراسمی یافت نشد</p></div>';
+  list.forEach(function(r){
+    var c=getCust(r.customerId),d=daysFromToday(r.date);
+    var cls=d<0?'m':d===0?'d':d<=7?'w':'p';
+    h+='<div class="item" data-act="openRes" data-id="'+r.id+'">'+
+      '<div class="av" style="background:var(--purple-l);color:var(--purple)">💍</div>'+
+      '<div class="info"><b>'+esc(r.title||r.type)+' — '+esc(c?fullName(c):'')+'</b>'+
+      '<span>'+fmtJ(r.date)+' · '+esc(r.hall.name||'بدون تالار')+'</span></div>'+
+      '<div class="side"><span class="tag '+cls+'">'+(d<0?'گذشته':d===0?'امروز':fa(d)+' روز')+'</span></div></div>';
+  });
+  return h;
+}
+
+/* ==================== PROJECTS ==================== */
+function vProjects(){
+  var list=activeRes().filter(function(r){return r.project});
+  var h='';
+  var groups={};
+  list.forEach(function(r){var s=r.project.stage||0;(groups[s]=groups[s]||[]).push(r)});
+  STAGES.forEach(function(name,i){
+    var g=groups[i]||[];
+    h+='<div class="card"><div class="card-h"><h3>'+name+'</h3><span class="tag m">'+fa(g.length)+'</span></div>';
+    if(!g.length)h+='<div style="font-size:12px;color:var(--muted);padding:4px 0">—</div>';
+    g.forEach(function(r){
+      var c=getCust(r.customerId);
+      h+='<div class="item" data-act="openRes" data-id="'+r.id+'">'+
+        '<div class="av" style="background:var(--blue-l);color:#2C7BBE">🎬</div>'+
+        '<div class="info"><b>'+esc(c?fullName(c):'')+'</b><span>'+esc(r.title||r.type)+' · '+fmtJ(r.date)+'</span></div></div>';
+    });
+    h+='</div>';
+  });
+  return h||'<div class="empty"><div class="em">🎬</div><p>پروژه‌ای ثبت نشده</p></div>';
+}
+
+/* ==================== FINANCE ==================== */
+function vFinance(){
+  var list=activeRes().sort(function(a,b){return remainingOf(b)-remainingOf(a)});
+  var totalContract=list.reduce(function(s,r){return s+(r.contractAmount||0)},0);
+  var totalPaid=list.reduce(function(s,r){return s+paidOf(r)},0);
+  var totalDue=totalContract-totalPaid;
+  var h='<div class="stats">'+
+    statCard('p','مجموع قرارداد',money(totalContract),'تومان')+
+    statCard('g','دریافتی',money(totalPaid),'تومان')+
+    statCard('d','مطالبات',money(totalDue),'تومان')+
+  '</div>';
+  h+='<div class="card"><div class="card-h"><h3>لیست مالی</h3></div>';
+  if(!list.length)return h+'<div class="empty"><div class="em">💰</div><p>رزروی ثبت نشده</p></div></div>';
+  list.forEach(function(r){
+    var c=getCust(r.customerId),f=finStatus(r);
+    h+='<div class="item" data-act="openRes" data-id="'+r.id+'">'+
+      '<div class="av" style="background:var(--purple-l);color:var(--purple)">'+esc((c?c.firstName:'?').charAt(0))+'</div>'+
+      '<div class="info"><b>'+esc(c?fullName(c):'')+'</b><span>قرارداد: '+money(r.contractAmount)+' · مانده: '+money(remainingOf(r))+'</span></div>'+
+      '<div class="side"><span class="tag '+f.cls+'">'+f.label+'</span></div></div>';
+  });
+  return h+'</div>';
+}
+
+/* ==================== REPORTS ==================== */
+function vReports(){
+  var from=state.repFrom||{jy:TODAY.jy,jm:TODAY.jm,jd:1};
+  var to=state.repTo||{jy:TODAY.jy,jm:TODAY.jm,jd:jMonthLen(TODAY.jy,TODAY.jm)};
+  var list=activeRes().filter(function(r){
+    if(!r.date)return false;
+    return dnum(r.date)>=dnum(from)&&dnum(r.date)<=dnum(to);
+  });
+  var done=list.filter(function(r){return (r.project.stage||0)>=2});
+  var cancelled=DB.reservations.filter(function(r){return r.status==='cancelled'});
+  var revenue=list.reduce(function(s,r){return s+(r.contractAmount||0)},0);
+  var paid=list.reduce(function(s,r){return s+paidOf(r)},0);
+  var deposit=list.reduce(function(s,r){return s+depositOf(r)},0);
+  var due=revenue-paid;
+  var unsettled=list.filter(function(r){return remainingOf(r)>0});
+  var notDelivered=list.filter(function(r){return (r.project.stage||0)<7});
+  var late=list.filter(function(r){return r.project.finalDelivery&&(r.project.stage||0)<7&&dnum(r.project.finalDelivery)<dnum(TODAY)});
+
+  var h='<div class="card"><div class="section-title">📅 بازه زمانی</div>'+
+    '<div class="frow">'+dateField('از تاریخ','repFrom',from)+dateField('تا تاریخ','repTo',to)+'</div>'+
+    '<button class="btn btn-primary btn-sm" data-act="applyReport">اعمال فیلتر</button>'+
+  '</div>';
+  h+='<div class="stats">'+
+    statCard('p','رزروهای بازه',fa(list.length))+
+    statCard('g','مراسم انجام‌شده',fa(done.length))+
+    statCard('d','رزرو لغوشده',fa(cancelled.length))+
+    statCard('b','درآمد قراردادها',money(revenue),'تومان')+
+    statCard('t','بیعانه دریافتی',money(deposit),'تومان')+
+    statCard('g','کل دریافتی',money(paid),'تومان')+
+    statCard('d','مطالبات',money(due),'تومان')+
+    statCard('w','تسویه‌نشده',fa(unsettled.length))+
+    statCard('w','تحویل‌نشده',fa(notDelivered.length))+
+    statCard('d','عقب‌افتاده',fa(late.length))+
+  '</div>';
+  h+='<div class="card"><div class="card-h"><h3>خروجی</h3></div>'+
+    '<div class="row">'+
+    '<button class="btn btn-sm" data-act="exportExcel">📊 خروجی Excel (CSV)</button>'+
+    '<button class="btn btn-sm" data-act="exportPDF">📄 خروجی چاپ (PDF)</button>'+
+    '</div></div>';
+  return h;
+}
+
+/* ==================== REMINDERS ==================== */
+function vReminders(){
+  var list=activeRes();
+  var items=[];
+  var todayN=dnum(TODAY);
+  list.forEach(function(r){
+    var c=getCust(r.customerId);
+    if(!c)return;
+    var name=fullName(c);
+    if(r.date){
+      var dd=dnum(r.date)-todayN;
+      if(dd===1)items.push({icon:'🔔',title:'مراسم فردا',desc:name+' — '+esc(r.title||r.type),cls:'w',rid:r.id});
+      else if(dd===0)items.push({icon:'📌',title:'مراسم امروز',desc:name+' — '+esc(r.title||r.type),cls:'d',rid:r.id});
+    }
+    ['photo','video','formal'].forEach(function(k){
+      var s=r[k];
+      if(!s||!s.date)return;
+      var d2=dnum(s.date)-todayN;
+      var lbl=k==='photo'?'عکاسی':k==='video'?'فیلم‌برداری':'فرمالیته';
+      if(d2===1)items.push({icon:'⏰',title:lbl+' فردا',desc:name,cls:'w',rid:r.id});
+      else if(d2===0)items.push({icon:'⏰',title:lbl+' امروز',desc:name,cls:'d',rid:r.id});
+    });
+    if(remainingOf(r)>0&&dnum(r.date)<todayN)items.push({icon:'💰',title:'مطالبات باقی‌مانده',desc:name+' — '+money(remainingOf(r))+' تومان',cls:'d',rid:r.id});
+    if(r.project.finalDelivery){
+      var d3=dnum(r.project.finalDelivery)-todayN;
+      if(d3<0&&(r.project.stage||0)<7)items.push({icon:'⚠️',title:'تحویل عقب‌افتاده',desc:name+' — '+fa(-d3)+' روز',cls:'d',rid:r.id});
+      else if(d3>=0&&d3<=3)items.push({icon:'📦',title:'تحویل نزدیک',desc:name+' — '+fa(d3)+' روز',cls:'w',rid:r.id});
+    }
+  });
+  if(!items.length)return '<div class="empty"><div class="em">✅</div><p>هیچ یادآوری فعالی نیست. همه‌چیز مرتب است!</p></div>';
+  var h='';
+  items.forEach(function(it){
+    h+='<div class="item" data-act="openRes" data-id="'+it.rid+'">'+
+      '<div class="av" style="background:var(--bg)">'+it.icon+'</div>'+
+      '<div class="info"><b>'+esc(it.title)+'</b><span>'+it.desc+'</span></div>'+
+      '<div class="side"><span class="tag '+it.cls+'">مهم</span></div></div>';
+  });
+  return h;
+}
+
+/* ==================== SETTINGS ==================== */
+function vSettings(){
+  var s=DB.settings;
+  var h='<div class="card"><div class="section-title">⚙️ تنظیمات آتیله</div>'+
+    '<div class="field"><label>نام آتلیه</label><input id="setStudio" value="'+esc(s.studioName||'آتیله')+'"></div>'+
+    '<div class="field"><label>روزهای یادآوری قبل از مراسم</label><input id="setReminder" type="number" value="'+(s.reminderDays||3)+'"></div>'+
+    '<button class="btn btn-primary btn-sm" data-act="saveSettings">ذخیره تنظیمات</button>'+
+  '</div>';
+  h+='<div class="card"><div class="section-title">💾 پشتیبان‌گیری</div>'+
+    '<p style="font-size:12px;color:var(--muted);margin-bottom:12px">تمام اطلاعات در مرورگر گوشی شما ذخیره می‌شوند. برای امنیت بیشتر، پشتیبان تهیه کنید.</p>'+
+    '<div class="row">'+
+    '<button class="btn btn-primary btn-sm" data-act="exportBackup">📥 دانلود پشتیبان</button>'+
+    '<label class="btn btn-sm" style="cursor:pointer">📤 بازیابی پشتیبان<input type="file" accept=".json" data-act="importBackup" style="display:none"></label>'+
+    '</div>'+
+    (s.lastBackup?'<p style="font-size:11px;color:var(--muted);margin-top:10px">آخرین پشتیبان: '+s.lastBackup+'</p>':'')+
+  '</div>';
+  h+='<div class="card"><div class="section-title">👥 انواع مراسم</div>'+
+    '<div class="chips">'+
+    DB.ceremonyTypes.map(function(t,i){
+      return '<span class="chip">'+esc(t)+' <button data-act="delCerType" data-i="'+i+'" style="background:none;border:0;color:var(--danger);cursor:pointer;font-size:14px">×</button></span>';
+    }).join('')+
+    '</div>'+
+    '<div class="frow"><div class="field"><input id="newCerType" placeholder="نوع جدید"></div>'+
+    '<button class="btn btn-primary btn-sm" data-act="addCerType">افزودن</button></div>'+
+  '</div>';
+  h+='<div class="card"><div class="section-title">🗑 حذف اطلاعات</div>'+
+    '<div class="note">احتیاط: این عملیات غیرقابل بازگشت است!</div>'+
+    '<button class="btn btn-danger btn-sm" data-act="resetAll">🗑 پاک‌کردن کل داده‌ها</button>'+
+  '</div>';
+  h+='<div class="card" style="text-align:center;padding:24px"><div class="brand-logo" style="margin:0 auto 10px">آ</div>'+
+    '<div style="font-weight:700;font-size:14px">تقویم آتیله</div>'+
+    '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin:4px 0 12px">ATILIE CALENDAR</div>'+
+    '<div style="font-size:11px;color:var(--muted)">نسخه ۱.۰.۰</div>'+
+  '</div>';
+  return h;
+}
+
+/* ==================== EVENT HANDLERS ==================== */
+document.addEventListener('click',function(e){
+  var t=e.target;
+  var el=t.closest('[data-act]');
+  if(!el)return;
+  var act=el.getAttribute('data-act');
+  var id=el.getAttribute('data-id');
+  var key=el.getAttribute('data-key');
+  var i=el.getAttribute('data-i');
+  var f=el.getAttribute('data-f');
+  var mode=el.getAttribute('data-mode');
+
+  if(act==='go'){e.preventDefault();go(el.getAttribute('data-view'));return}
+  if(act==='openRes'){e.preventDefault();go('resdetail',{id:id});return}
+  if(act==='openCust'){e.preventDefault();go('custdetail',{custId:id});return}
+  if(act==='editRes'){e.preventDefault();state.draft=null;go('editres',{id:id});return}
+  if(act==='newForCust'){e.preventDefault();state.draft=newDraft();state.draft.customerId=id;go('newres');return}
+  if(act==='calMode'){state.calMode=mode;render();return}
+  if(act==='calFilter'){state.calFilter=f;render();return}
+  if(act==='calPrev'){
+    if(state.calMode==='month'){state.calM--;if(state.calM<1){state.calM=12;state.calY--}}
+    else if(state.calMode==='week'){var p=state.selectedDay.split('-');var jj=d2j(j2d(+p[0],+p[1],+p[2])-7);state.selectedDay=dkey(jj);state.calY=jj.jy;state.calM=jj.jm}
+    else if(state.calMode==='day'){var p2=state.selectedDay.split('-');var jj2=d2j(j2d(+p2[0],+p2[1],+p2[2])-1);state.selectedDay=dkey(jj2);state.calY=jj2.jy;state.calM=jj2.jm}
+    render();return;
+  }
+  if(act==='calNext'){
+    if(state.calMode==='month'){state.calM++;if(state.calM>12){state.calM=1;state.calY++}}
+    else if(state.calMode==='week'){var p=state.selectedDay.split('-');var jj=d2j(j2d(+p[0],+p[1],+p[2])+7);state.selectedDay=dkey(jj);state.calY=jj.jy;state.calM=jj.jm}
+    else if(state.calMode==='day'){var p2=state.selectedDay.split('-');var jj2=d2j(j2d(+p2[0],+p2[1],+p2[2])+1);state.selectedDay=dkey(jj2);state.calY=jj2.jy;state.calM=jj2.jm}
+    render();return;
+  }
+  if(act==='calToday'){state.calY=TODAY.jy;state.calM=TODAY.jm;state.selectedDay=dkey(TODAY);render();return}
+  if(act==='pickDay'){state.selectedDay=key;var p=key.split('-');state.calY=+p[0];state.calM=+p[1];render();return}
+  if(act==='newOnDay'){
+    state.draft=newDraft();
+    var p=key.split('-');state.draft.date={jy:+p[0],jm:+p[1],jd:+p[2]};
+    go('newres');return;
+  }
+  if(act==='cancelForm'){state.draft=null;go('dashboard');return}
+  if(act==='addPaymentDraft'){
+    var amt=prompt('مبلغ پرداخت (تومان):');
+    if(!amt)return;
+    var dt=prompt('تاریخ پرداخت (مثال ۱۴۰۳/۰۵/۱۲):',fmtJShort(TODAY));
+    var d=parseJ(dt);if(!d){toast('تاریخ نامعتبر');return}
+    var method=prompt('روش پرداخت:\n'+PAY_METHODS.map(function(m,i){return (i+1)+') '+m}).join('\n'),'1');
+    var mi=(Number(enDigits(method||'1'))||1)-1;
+    state.draft.payments.push({amount:Number(enDigits(amt).replace(/\D/g,''))||0,date:d,method:PAY_METHODS[Math.max(0,Math.min(PAY_METHODS.length-1,mi))],note:''});
+    render();return;
+  }
+  if(act==='delDraftPayment'){
+    state.draft.payments.splice(+i,1);render();return;
+  }
+  if(act==='addPayment'){
+    var r=getRes(id);if(!r)return;
+    var amt=prompt('مبلغ پرداخت (تومان):');if(!amt)return;
+    var dt=prompt('تاریخ پرداخت:',fmtJShort(TODAY));var dd=parseJ(dt);if(!dd){toast('تاریخ نامعتبر');return}
+    var method=prompt('روش پرداخت (1=کارت،2=نقدی،3=انتقال،4=سایر):','1');
+    var mi=(Number(enDigits(method||'1'))||1)-1;
+    var note=prompt('توضیح (اختیاری):','')||'';
+    r.payments=r.payments||[];
+    r.payments.push({amount:Number(enDigits(amt).replace(/\D/g,''))||0,date:dd,method:PAY_METHODS[Math.max(0,Math.min(PAY_METHODS.length-1,mi))],note:note});
+    saveDB();toast('پرداخت ثبت شد ✅');render();return;
+  }
+  if(act==='delPayment'){
+    if(!confirm('این پرداخت حذف شود؟'))return;
+    var r=getRes(id);r.payments.splice(+i,1);saveDB();render();return;
+  }
+  if(act==='delOutput'){
+    if(!confirm('این خروجی حذف شود؟'))return;
+    var r=getRes(id);r.project.outputs.splice(+i,1);saveDB();render();return;
+  }
+  if(act==='addOutput'){
+    var r=getRes(id);if(!r)return;
+    var type=prompt('نوع خروجی (فیلم/عکس/آلبوم/کلیپ/سایر):','فیلم');
+    if(!type)return;
+    var status=prompt('وضعیت (در انتظار/در حال انجام/آماده/تحویل شده):','در انتظار');
+    r.project.outputs=r.project.outputs||[];
+    r.project.outputs.push({type:type,status:status||'در انتظار'});
+    saveDB();render();return;
+  }
+  if(act==='delRes'){
+    if(!confirm('این رزرو حذف شود؟'))return;
+    var r=getRes(id);
+    var idx=DB.reservations.indexOf(r);
+    DB.reservations.splice(idx,1);saveDB();toast('حذف شد');go('dashboard');return;
+  }
+  if(act==='delCust'){
+    if(!confirm('مشتری و تمام رزروهایش حذف شود؟'))return;
+    DB.customers=DB.customers.filter(function(c){return c.id!==id});
+    DB.reservations=DB.reservations.filter(function(r){return r.customerId!==id});
+    saveDB();toast('حذف شد');go('customers');return;
+  }
+  if(act==='copy'){
+    var val=el.getAttribute('data-val');
+    if(navigator.clipboard){navigator.clipboard.writeText(val).then(function(){toast('کپی شد ✅')})}
+    else{var tmp=document.createElement('textarea');tmp.value=val;document.body.appendChild(tmp);tmp.select();document.execCommand('copy');document.body.removeChild(tmp);toast('کپی شد ✅')}
+    return;
+  }
+  if(act==='setStage'){
+    /* handled in change event */
+  }
+  if(act==='saveSettings'){
+    DB.settings.studioName=document.getElementById('setStudio').value.trim();
+    DB.settings.reminderDays=Number(enDigits(document.getElementById('setReminder').value))||3;
+    saveDB();toast('ذخیره شد ✅');render();return;
+  }
+  if(act==='addCerType'){
+    var nt=document.getElementById('newCerType').value.trim();
+    if(!nt)return;
+    DB.ceremonyTypes.push(nt);saveDB();toast('اضافه شد ✅');render();return;
+  }
+  if(act==='delCerType'){
+    if(!confirm('حذف شود؟'))return;
+    DB.ceremonyTypes.splice(+i,1);saveDB();render();return;
+  }
+  if(act==='exportBackup'){
+    var data=JSON.stringify(DB,null,2);
+    var blob=new Blob([data],{type:'application/json'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');a.href=url;
+    a.download='atilie-backup-'+dkey(TODAY)+'.json';a.click();
+    URL.revokeObjectURL(url);
+    DB.settings.lastBackup=fmtJ(TODAY)+' '+new Date().toLocaleTimeString('fa-IR');
+    saveDB();toast('پشتیبان دانلود شد ✅');return;
+  }
+  if(act==='applyReport'){
+    var fromInp=document.querySelector('[data-dfield="repFrom"]');
+    var toInp=document.querySelector('[data-dfield="repTo"]');
+    state.repFrom=parseJ(fromInp?fromInp.value:'');
+    state.repTo=parseJ(toInp?toInp.value:'');
+    if(!state.repFrom||!state.repTo){toast('تاریخ نامعتبر');return}
+    render();return;
+  }
+  if(act==='exportExcel'){
+    var rows=[['نام','موبایل','نوع','تاریخ','مبلغ','پرداخت','مانده','مرحله']];
+    activeRes().forEach(function(r){
+      var c=getCust(r.customerId);
+      rows.push([c?fullName(c):'',c?c.mobile:'',r.type||'',fmtJShort(r.date),r.contractAmount||0,paidOf(r),remainingOf(r),STAGES[r.project.stage||0]]);
+    });
+    var csv='\uFEFF'+rows.map(function(row){return row.map(function(x){return '"'+String(x).replace(/"/g,'""')+'"'}).join(',')}).join('\n');
+    var blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');a.href=url;a.download='atilie-report-'+dkey(TODAY)+'.csv';a.click();
+    URL.revokeObjectURL(url);toast('فایل CSV دانلود شد ✅');return;
+  }
+  if(act==='exportPDF'){
+    window.print();return;
+  }
+  if(act==='printRes'){
+    var r=getRes(id);if(!r)return;
+    var c=getCust(r.customerId);
+    var win=window.open('','_blank');
+    win.document.write('<html dir="rtl"><head><title>برگه رزرو</title><style>body{font-family:Tahoma,sans-serif;padding:30px;line-height:2}h1{color:#4D52B4;border-bottom:2px solid #4D52B4;padding-bottom:10px}table{width:100%;border-collapse:collapse}td{padding:8px;border-bottom:1px solid #ddd}td:first-child{color:#666;width:150px}</style></head><body>'+
+      '<h1>تقویم آتیله — برگه رزرو</h1>'+
+      '<table>'+
+      '<tr><td>مشتری</td><td>'+(c?fullName(c):'')+'</td></tr>'+
+      '<tr><td>موبایل</td><td>'+(c?c.mobile:'')+'</td></tr>'+
+      '<tr><td>نام مراسم</td><td>'+esc(r.title||r.type)+'</td></tr>'+
+      '<tr><td>تاریخ</td><td>'+fmtJ(r.date,true)+'</td></tr>'+
+      '<tr><td>ساعت</td><td>'+niceTime(r.startTime)+'</td></tr>'+
+      '<tr><td>تالار</td><td>'+esc(r.hall.name||'')+'</td></tr>'+
+      '<tr><td>مبلغ قرارداد</td><td>'+money(r.contractAmount)+' تومان</td></tr>'+
+      '<tr><td>مانده</td><td>'+money(remainingOf(r))+' تومان</td></tr>'+
+      '</table></body></html>');
+    win.document.close();win.print();return;
+  }
+  if(act==='printReceipt'){
+    var r=getRes(id);if(!r)return;
+    var c=getCust(r.customerId);
+    var win=window.open('','_blank');
+    win.document.write('<html dir="rtl"><head><title>رسید بیعانه</title><style>body{font-family:Tahoma,sans-serif;padding:30px;line-height:2}h1{color:#4D52B4;text-align:center;border-bottom:2px solid #4D52B4;padding-bottom:10px}table{width:100%;border-collapse:collapse;margin-top:20px}td{padding:10px;border-bottom:1px solid #ddd}td:first-child{color:#666;width:150px}.sign{margin-top:60px;display:flex;justify-content:space-between}</style></head><body>'+
+      '<h1>رسید دریافت بیعانه</h1>'+
+      '<table>'+
+      '<tr><td>مشتری</td><td>'+(c?fullName(c):'')+'</td></tr>'+
+      '<tr><td>موبایل</td><td>'+(c?c.mobile:'')+'</td></tr>'+
+      '<tr><td>مبلغ بیعانه</td><td>'+money(depositOf(r))+' تومان</td></tr>'+
+      '<tr><td>مبلغ کل</td><td>'+money(r.contractAmount)+' تومان</td></tr>'+
+      '<tr><td>مانده</td><td>'+money(remainingOf(r))+' تومان</td></tr>'+
+      '<tr><td>تاریخ</td><td>'+fmtJ(TODAY)+'</td></tr>'+
+      '</table>'+
+      '<div class="sign"><div>مهر و امضای آتلیه</div><div>امضای مشتری</div></div>'+
+      '</body></html>');
+    win.document.close();win.print();return;
+  }
+  if(act==='resetAll'){
+    if(!confirm('⚠️ تمام اطلاعات پاک می‌شود. مطمئنید؟'))return;
+    if(!confirm('آخرین تأیید: واقعاً حذف شود؟'))return;
+    localStorage.removeItem(DB_KEY);DB=blankDB();saveDB();toast('همه داده‌ها پاک شد');go('dashboard');return;
+  }
+  if(act==='pickDate'){
+    var inp=document.getElementById(el.getAttribute('data-input'));
+    if(!inp)return;
+    var cur=parseJ(inp.value)||TODAY;
+    var jy=prompt('سال:',cur.jy);if(!jy)return;
+    var jm=prompt('ماه (۱-۱۲):',cur.jm);if(!jm)return;
+    var jd=prompt('روز:',cur.jd);if(!jd)return;
+    var d={jy:+enDigits(jy),jm:+enDigits(jm),jd:+enDigits(jd)};
+    if(d.jm<1||d.jm>12||d.jd<1||d.jd>jMonthLen(d.jy,d.jm)){toast('تاریخ نامعتبر');return}
+    inp.value=fmtJShort(d);return;
+  }
+});
+
+document.addEventListener('change',function(e){
+  var el=e.target;
+  var act=el.getAttribute('data-act');
+  if(act==='setStage'){
+    var r=getRes(el.getAttribute('data-id'));
+    if(r){r.project.stage=Number(el.value)||0;saveDB();toast('مرحله پروژه به‌روز شد ✅')}
+  }
+  if(act==='importBackup'){
+    var file=el.files[0];if(!file)return;
+    var reader=new FileReader();
+    reader.onload=function(){
+      try{
+        var data=JSON.parse(reader.result);
+        if(!data.customers||!data.reservations)throw new Error('فایل نامعتبر');
+        if(!confirm('اطلاعات فعلی جایگزین شود؟'))return;
+        DB=Object.assign(blankDB(),data);
+        saveDB();toast('بازیابی انجام شد ✅');render();
+      }catch(err){toast('فایل پشتیبان نامعتبر')}
+    };
+    reader.readAsText(file);
+  }
+});
+
+document.addEventListener('submit',function(e){
+  if(e.target.id==='resForm'){
+    e.preventDefault();saveReservation();
+  }
+});
+
+document.addEventListener('input',function(e){
+  var el=e.target;
+  var act=el.getAttribute('data-act');
+  if(act==='searchCust'||act==='searchCer'){
+    state.search=el.value;
+    var q=state.search;
+    /* re-render list only */
+    var content=document.querySelector('.content');
+    if(content){
+      var html=state.view==='customers'?vCustomers():vCeremonies();
+      var box=content.querySelector('.search-box');
+      if(box){
+        var tmp=document.createElement('div');tmp.innerHTML=html;
+        content.replaceChild(tmp.querySelector('.search-box'),box);
+        var nodes=content.querySelectorAll('.item, .empty');
+        nodes.forEach(function(n){n.remove()});
+        var newNodes=tmp.querySelectorAll('.item, .empty');
+        newNodes.forEach(function(n){content.appendChild(n)});
+      }
+    }
+  }
+});
+
+/* ==================== INIT ==================== */
+loadDB();
+render();
 </script>
 </body>
 </html>
