@@ -104,8 +104,536 @@ a{color:var(--purple)}
 <div id="modalRoot"></div>
 <div id="toast"></div>
 <script>
-/* ============ ATILIE CALENDAR — Part 1 ============ */
-/* (کد JavaScript اینجا قرار می‌گیرد — پارت‌های بعدی) */
+  /* ==================== JALALI CORE ==================== */
+function _div(a,b){return ~~(a/b)}
+function _mod(a,b){return a-~~(a/b)*b}
+function jalCal(jy,withoutLeap){
+  var breaks=[-61,9,38,199,426,686,756,818,1111,1181,1210,1635,2060,2097,2192,2262,2324,2394,2456,3178];
+  var bl=breaks.length,gy=jy+621,leapJ=-14,jp=breaks[0],jm,jump,leap,leapG,march,n,i;
+  if(jy<jp||jy>=breaks[bl-1]) throw new Error('سال شمسی نامعتبر: '+jy);
+  for(i=1;i<bl;i+=1){jm=breaks[i];jump=jm-jp;if(jy<jm)break;leapJ=leapJ+_div(jump,33)*8+_div(_mod(jump,33),4);jp=jm}
+  n=jy-jp;
+  leapJ=leapJ+_div(n,33)*8+_div(_mod(n,33)+3,4);
+  if(_mod(jump,33)===4&&jump-n===4) leapJ+=1;
+  leapG=_div(gy,4)-_div((_div(gy,100)+1)*3,4)-150;
+  march=20+leapJ-leapG;
+  if(!withoutLeap){
+    if(jump-n<6) n=n-jump+_div(jump+4,33)*33;
+    leap=_mod(_mod(n+1,33)-1,4);
+    if(leap===-1) leap=4;
+  }
+  return {leap:leap,gy:gy,march:march};
+}
+function g2d(gy,gm,gd){
+  var d=_div((gy+_div(gm-8,6)+100100)*1461,4)+_div(153*_mod(gm+9,12)+2,5)+gd-34840408;
+  d=d-_div(_div(gy+100100+_div(gm-8,6),100)*3,4)+752;
+  return d;
+}
+function d2g(jdn){
+  var j=_div(4*jdn+139361631,1);
+  j=j+_div(_div(4*jdn+183187720,146097)*3,4)*4-3908;
+  var i=_div(_mod(j,1461),4)*5+308;
+  var gd=_div(_mod(i,153),5)+1;
+  var gm=_mod(_div(i,153),12)+1;
+  var gy=_div(j,1461)-100100+_div(8-gm,6);
+  return {gy:gy,gm:gm,gd:gd};
+}
+function j2d(jy,jm,jd){
+  var r=jalCal(jy,true);
+  return g2d(r.gy,3,r.march)+(jm-1)*31-_div(jm,7)*(jm-7)+jd-1;
+}
+function d2j(jdn){
+  var gy=d2g(jdn).gy,jy=gy-621,r=jalCal(jy,false),jdn1f=g2d(gy,3,r.march),jd,jm,k;
+  k=jdn-jdn1f;
+  if(k>=0){
+    if(k<=185){jm=1+_div(k,31);jd=_mod(k,31)+1;return{jy:jy,jm:jm,jd:jd}}
+    else k-=186;
+  } else {jy-=1;k+=179;if(r.leap===1)k+=1}
+  jm=7+_div(k,30);jd=_mod(k,30)+1;
+  return {jy:jy,jm:jm,jd:jd};
+}
+function isLeapJalaali(jy){return jalCal(jy,false).leap===0}
+function jMonthLen(jy,jm){
+  if(jm<=6)return 31;
+  if(jm<=11)return 30;
+  return isLeapJalaali(jy)?30:29;
+}
+function jWeekday(jy,jm,jd){
+  var g=d2g(j2d(jy,jm,jd));
+  var dt=new Date(g.gy,g.gm-1,g.gd);
+  return (dt.getDay()+1)%7;
+}
+
+/* ==================== CONSTANTS ==================== */
+var MONTHS=['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
+var WD=['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه'];
+var WDS=['ش','ی','د','س','چ','پ','ج'];
+var FA='۰۱۲۳۴۵۶۷۸۹';
+var STAGES=['رزرو ثبت شده','در انتظار اجرای مراسم','مراسم انجام شده','در حال انتخاب عکس','در حال تدوین فیلم','در حال آماده‌سازی آلبوم','آماده تحویل','تحویل نهایی شده'];
+var PAY_METHODS=['کارت به کارت','نقدی','انتقال بانکی','سایر'];
+var OUT_TYPES=['فیلم','عکس','آلبوم','کلیپ','سایر'];
+var OUT_STATUS=['در انتظار','در حال انجام','آماده','تحویل شده'];
+var KIND={
+  ceremony:{label:'مراسم',color:'#4D52B4'},
+  photo:{label:'عکاسی',color:'#2B9B8A'},
+  video:{label:'فیلم‌برداری',color:'#4E9CE8'},
+  formal:{label:'فرمالیته',color:'#8B7BD8'},
+  delivery:{label:'تحویل',color:'#6FA85A'}
+};
+
+/* ==================== UTILS ==================== */
+function fa(n){return String(n).replace(/[0-9]/g,function(d){return FA[+d]})}
+function enDigits(s){return String(s==null?'':s).replace(/[۰-۹]/g,function(d){return '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)}).replace(/[٠-٩]/g,function(d){return '٠١٢٣٤٥٦٧٨٩'.indexOf(d)})}
+function money(n){n=Math.round(Number(n)||0);return fa(n.toLocaleString('en-US'))}
+function pad2(n){return (n<10?'0':'')+n}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function todayJ(){var d=new Date();var g={gy:d.getFullYear(),gm:d.getMonth()+1,gd:d.getDate()};return d2j(g2d(g.gy,g.gm,g.gd))}
+function dkey(d){return d?(d.jy+'-'+pad2(d.jm)+'-'+pad2(d.jd)):''}
+function dnum(d){return d?j2d(d.jy,d.jm,d.jd):0}
+function fmtJ(d,withWd){
+  if(!d)return '—';
+  var s=fa(d.jd)+' '+MONTHS[d.jm-1]+' '+fa(d.jy);
+  if(withWd) s=WD[jWeekday(d.jy,d.jm,d.jd)]+'، '+s;
+  return s;
+}
+function fmtJShort(d){return d?fa(d.jy)+'/'+fa(pad2(d.jm))+'/'+fa(pad2(d.jd)):'—'}
+function parseJ(str){
+  if(!str)return null;
+  var s=enDigits(String(str)).replace(/[\/\-\.]/g,'/').trim();
+  var m=s.match(/^(\d{2,4})\/(\d{1,2})\/(\d{1,2})$/);
+  if(!m)return null;
+  var jy=+m[1],jm=+m[2],jd=+m[3];
+  if(jy<1000)jy+=1300;
+  if(jm<1||jm>12||jd<1||jd>jMonthLen(jy,jm))return null;
+  return {jy:jy,jm:jm,jd:jd};
+}
+function normalizeMobile(s){
+  var x=enDigits(s).replace(/\D/g,'');
+  if(x.indexOf('98')===0&&x.length===12)x='0'+x.slice(2);
+  if(x.length===10&&x.charAt(0)==='9')x='0'+x;
+  return x;
+}
+function parseTime(t){
+  var s=enDigits(t||'').replace(/\D/g,'');
+  if(s.length<3)return null;
+  if(s.length===3)s='0'+s;
+  var h=+s.slice(0,2),m=+s.slice(2,4);
+  if(h>23||m>59)return null;
+  return h*60+m;
+}
+function niceTime(t){var p=parseTime(t);if(p===null)return t||'—';return fa(pad2(~~(p/60))+':'+pad2(p%60))}
+function daysFromToday(d){return dnum(d)-dnum(todayJ())}
+function toast(msg){
+  var t=document.getElementById('toast');
+  t.textContent=msg;t.className='show';
+  clearTimeout(t._t);t._t=setTimeout(function(){t.className=''},2400);
+}
+
+/* ==================== DATABASE ==================== */
+var DB_KEY='atilie_calendar_db_v1';
+var DB=null;
+function blankDB(){
+  return {
+    version:1,
+    customers:[],
+    reservations:[],
+    ceremonyTypes:['عروسی','حنابندان','عقد','نامزدی','تولد','سالگرد ازدواج','مراسم خانوادگی','سایر'],
+    tasks:[],
+    notes:[],
+    settings:{studioName:'آتیله',reminderDays:3,autoBackup:true,lastBackup:null},
+    createdAt:new Date().toISOString()
+  };
+}
+function loadDB(){
+  try{
+    var raw=localStorage.getItem(DB_KEY);
+    if(!raw){DB=blankDB();saveDB();return}
+    var p=JSON.parse(raw);
+    DB=Object.assign(blankDB(),p);
+    if(!DB.settings)DB.settings=blankDB().settings;
+    if(!DB.ceremonyTypes||!DB.ceremonyTypes.length)DB.ceremonyTypes=blankDB().ceremonyTypes;
+  }catch(e){console.error(e);DB=blankDB()}
+}
+function saveDB(){
+  try{localStorage.setItem(DB_KEY,JSON.stringify(DB))}
+  catch(e){console.error(e);toast('خطا در ذخیره‌سازی!')}
+}
+function getRes(id){return DB.reservations.filter(function(r){return r.id===id})[0]||null}
+function getCust(id){return DB.customers.filter(function(c){return c.id===id})[0]||null}
+function fullName(c){return c?((c.firstName||'')+' '+(c.lastName||'')).trim()||'بدون نام':'—'}
+function activeRes(){return DB.reservations.filter(function(r){return r.status!=='cancelled'})}
+function paidOf(r){return (r.payments||[]).reduce(function(s,p){return s+(Number(p.amount)||0)},0)}
+function remainingOf(r){return (Number(r.contractAmount)||0)-paidOf(r)}
+function depositOf(r){var p=(r.payments||[])[0];return p?Number(p.amount)||0:0}
+function finStatus(r){
+  var c=Number(r.contractAmount)||0,p=paidOf(r);
+  if(c<=0)return {label:'تعیین نشده',cls:'m'};
+  if(p<=0)return {label:'پرداخت نشده',cls:'d'};
+  if(p>=c)return {label:'تسویه کامل',cls:'g'};
+  if(depositOf(r)>0&&p<=depositOf(r)&&p<c)return {label:'بیعانه پرداخت شده',cls:'w'};
+  return {label:'پرداخت ناقص',cls:'w'};
+}
+function upsertCustomer(data){
+  var mob=normalizeMobile(data.mobile);
+  var found=null;
+  if(data.id)found=getCust(data.id);
+  if(!found&&mob){
+    found=DB.customers.filter(function(c){return normalizeMobile(c.mobile)===mob})[0]||null;
+  }
+  if(found){
+    found.firstName=data.firstName||found.firstName;
+    found.lastName=data.lastName||found.lastName;
+    found.mobile=data.mobile||found.mobile;
+    found.bookerName=data.bookerName||found.bookerName;
+    found.bookerMobile=data.bookerMobile||found.bookerMobile;
+    found.phone2=data.phone2||found.phone2;
+    found.notes=data.notes||found.notes;
+    return found;
+  }
+  var c={
+    id:uid(),
+    firstName:data.firstName||'',lastName:data.lastName||'',
+    mobile:data.mobile||'',bookerName:data.bookerName||'',
+    bookerMobile:data.bookerMobile||'',phone2:data.phone2||'',
+    notes:data.notes||'',createdAt:new Date().toISOString()
+  };
+  DB.customers.push(c);
+  return c;
+}
+function eventsOn(d){
+  var key=dkey(d),out=[];
+  activeRes().forEach(function(r){
+    var c=getCust(r.customerId);
+    var nm=c?fullName(c):'';
+    function push(kind,src,title){
+      if(!src||!src.date)return;
+      if(dkey(src.date)!==key)return;
+      out.push({r:r,kind:kind,start:src.start||'',end:src.end||'',
+        name:nm,title:title||KIND[kind].label,color:KIND[kind].color,
+        place:src.place||''});
+    }
+    if(r.date)push('ceremony',{date:r.date,start:r.startTime,end:r.endTime},r.title||r.type);
+    if(r.photo)push('photo',r.photo);
+    if(r.video)push('video',r.video);
+    if(r.formal)push('formal',r.formal);
+    if(r.project&&r.project.finalDelivery){
+      push('delivery',{date:r.project.finalDelivery,start:'',end:''},'تحویل پروژه');
+    }
+  });
+  out.sort(function(a,b){
+    var pa=parseTime(a.start),pb=parseTime(b.start);
+    if(pa===null&&pb===null)return 0;
+    if(pa===null)return 1;if(pb===null)return -1;
+    return pa-pb;
+  });
+  return out;
+}
+
+/* ==================== STATE & ROUTER ==================== */
+var TODAY=todayJ();
+var state={
+  view:'dashboard',
+  calMode:'month',
+  calY:TODAY.jy,calM:TODAY.jm,calD:TODAY.jd,
+  selectedDay:dkey(TODAY),
+  resId:null,
+  custId:null,
+  draft:null,
+  calFilter:'all',
+  search:'',
+  repFrom:null,repTo:null
+};
+function go(view,opts){
+  opts=opts||{};
+  state.view=view;
+  if(opts.id)state.resId=opts.id;
+  if(opts.custId)state.custId=opts.custId;
+  window.scrollTo(0,0);
+  render();
+}
+
+/* ==================== SHELL RENDER ==================== */
+var NAV=[
+  {v:'dashboard',l:'داشبورد',i:'🏠'},
+  {v:'calendar',l:'تقویم',i:'📅'},
+  {v:'newres',l:'ثبت رزرو جدید',i:'➕'},
+  {v:'customers',l:'مشتریان',i:'👥'},
+  {v:'ceremonies',l:'مراسم‌ها',i:'💍'},
+  {v:'projects',l:'پروژه‌ها و تحویل‌ها',i:'🎬'},
+  {v:'finance',l:'امور مالی',i:'💰'},
+  {v:'reports',l:'گزارش‌ها',i:'📊'},
+  {v:'reminders',l:'یادآوری‌ها',i:'🔔'},
+  {v:'settings',l:'تنظیمات',i:'⚙️'}
+];
+function render(){
+  TODAY=todayJ();
+  var app=document.getElementById('app');
+  app.innerHTML=
+    '<div class="app">'+
+      sidebarHTML()+
+      '<div class="main">'+
+        viewHTML()+
+      '</div>'+
+    '</div>'+
+    bottomNavHTML();
+  var el=document.getElementById('searchInput');
+  if(el&&state.search!==undefined)el.value=state.search;
+}
+function sidebarHTML(){
+  var h='<aside class="sidebar"><div class="brand">'+
+    '<div class="brand-logo">آ</div>'+
+    '<div class="brand-txt"><b>تقویم آتیله</b><span>ATILIE CALENDAR</span></div>'+
+  '</div><nav class="navlist">';
+  NAV.forEach(function(n){
+    h+='<button class="navitem'+(state.view===n.v?' active':'')+'" data-act="go" data-view="'+n.v+'">'+
+      '<span class="ic">'+n.i+'</span>'+n.l+'</button>';
+  });
+  return h+'</nav></aside>';
+}
+function bottomNavHTML(){
+  var items=[
+    {v:'dashboard',l:'داشبورد',i:'🏠'},
+    {v:'calendar',l:'تقویم',i:'📅'},
+    {v:'newres',l:'ثبت',i:'➕',fab:true},
+    {v:'customers',l:'مشتریان',i:'👥'},
+    {v:'menu',l:'بیشتر',i:'☰'}
+  ];
+  var h='<nav class="bottomnav">';
+  items.forEach(function(n){
+    var act=n.v==='menu'?'openMenu':'go';
+    h+='<button class="'+(n.fab?'fab ':'')+(state.view===n.v?'active':'')+'" data-act="'+act+'" data-view="'+n.v+'">'+
+      '<span class="ic">'+n.i+'</span>'+(n.fab?'':'<span>'+n.l+'</span>')+'</button>';
+  });
+  return h+'</nav>';
+}
+function pageHead(title,sub,actions){
+  return '<div class="topbar"><div style="flex:1"><h1>'+esc(title)+'</h1>'+
+    (sub?'<div class="sub">'+sub+'</div>':'')+'</div>'+(actions||'')+'</div>';
+}
+function viewHTML(){
+  switch(state.view){
+    case 'dashboard':return pageHead('داشبورد','نمای کلی آتیله')+'<div class="content">'+vDashboard()+'</div>';
+    case 'calendar':return vCalendar();
+    case 'newres':return vResForm(null);
+    case 'editres':return vResForm(state.resId);
+    case 'resdetail':return vResDetail(state.resId);
+    case 'customers':return pageHead('مشتریان',fa(DB.customers.length)+' مشتری')+'<div class="content">'+vCustomers()+'</div>';
+    case 'custdetail':return vCustDetail(state.custId);
+    case 'ceremonies':return pageHead('مراسم‌ها','لیست تمام مراسم‌ها')+'<div class="content">'+vCeremonies()+'</div>';
+    case 'projects':return pageHead('پروژه‌ها و تحویل‌ها','مدیریت مراحل پروژه')+'<div class="content">'+vProjects()+'</div>';
+    case 'finance':return pageHead('امور مالی','مدیریت پرداخت‌ها و مطالبات')+'<div class="content">'+vFinance()+'</div>';
+    case 'reports':return pageHead('گزارش‌ها و آمار','تحلیل عملکرد')+'<div class="content">'+vReports()+'</div>';
+    case 'reminders':return pageHead('یادآوری‌ها','اعلان‌های هوشمند')+'<div class="content">'+vReminders()+'</div>';
+    case 'settings':return pageHead('تنظیمات','پشتیبان‌گیری و تنظیمات')+'<div class="content">'+vSettings()+'</div>';
+    default:return pageHead('داشبورد','')+'<div class="content">'+vDashboard()+'</div>';
+  }
+}
+
+/* ==================== DASHBOARD ==================== */
+function statCard(cls,label,val,unit){
+  return '<div class="stat '+cls+'"><span class="lbl">'+label+'</span>'+
+    '<div class="val">'+val+'</div>'+(unit?'<span class="unit">'+unit+'</span>':'')+'</div>';
+}
+function vDashboard(){
+  TODAY=todayJ();
+  var list=activeRes();
+  var thisMonth=list.filter(function(r){return r.date&&r.date.jy===TODAY.jy&&r.date.jm===TODAY.jm});
+  var upcoming=list.filter(function(r){return r.date&&dnum(r.date)>=dnum(TODAY)});
+  var photoUp=list.filter(function(r){return r.photo&&r.photo.date&&dnum(r.photo.date)>=dnum(TODAY)});
+  var videoUp=list.filter(function(r){return r.video&&r.video.date&&dnum(r.video.date)>=dnum(TODAY)});
+  var formalUp=list.filter(function(r){return r.formal&&r.formal.date&&dnum(r.formal.date)>=dnum(TODAY)});
+  var editing=list.filter(function(r){return r.project&&r.project.stage===4});
+  var ready=list.filter(function(r){return r.project&&r.project.stage===6});
+  var late=list.filter(function(r){return r.project&&r.project.finalDelivery&&r.project.stage<7&&dnum(r.project.finalDelivery)<dnum(TODAY)});
+  var totalPaid=list.reduce(function(s,r){return s+paidOf(r)},0);
+  var totalDue=list.reduce(function(s,r){return s+Math.max(0,remainingOf(r))},0);
+  var totalDeposit=list.reduce(function(s,r){return s+depositOf(r)},0);
+
+  var h='<div class="stats">'+
+    statCard('p','رزروهای این ماه',fa(thisMonth.length))+
+    statCard('b','مراسم پیش رو',fa(upcoming.length))+
+    statCard('t','جلسات عکاسی',fa(photoUp.length))+
+    statCard('b','فیلم‌برداری پیش رو',fa(videoUp.length))+
+    statCard('t','فرمالیته پیش رو',fa(formalUp.length))+
+    statCard('w','در حال تدوین',fa(editing.length))+
+    statCard('g','آماده تحویل',fa(ready.length))+
+    statCard('d','تحویل عقب‌افتاده',fa(late.length))+
+    statCard('p','تعداد مشتریان',fa(DB.customers.length))+
+    statCard('t','بیعانه دریافتی',money(totalDeposit),'تومان')+
+    statCard('g','کل دریافتی',money(totalPaid),'تومان')+
+    statCard('d','مطالبات باقی‌مانده',money(totalDue),'تومان')+
+  '</div>';
+
+  var todayEv=eventsOn(TODAY);
+  h+='<div class="card"><div class="card-h"><h3>📌 برنامه‌های امروز</h3>'+
+    '<button class="link" data-act="go" data-view="calendar">تقویم</button></div>';
+  if(!todayEv.length){
+    h+='<div class="empty"><div class="em">☕</div><p>امروز برنامه‌ای ثبت نشده است</p></div>';
+  } else {
+    todayEv.forEach(function(e){h+=evRow(e)});
+  }
+  h+='</div>';
+
+  var nextC=list.filter(function(r){return r.date&&dnum(r.date)>=dnum(TODAY)})
+    .sort(function(a,b){return dnum(a.date)-dnum(b.date)}).slice(0,5);
+  h+='<div class="card"><div class="card-h"><h3>💍 مراسم‌های نزدیک</h3></div>';
+  if(!nextC.length)h+='<div class="empty"><div class="em">📭</div><p>مراسمی در پیش نیست</p></div>';
+  else nextC.forEach(function(r){
+    var c=getCust(r.customerId),d=daysFromToday(r.date);
+    h+='<div class="item" data-act="openRes" data-id="'+r.id+'">'+
+      '<div class="av" style="background:#EDEEF9;color:#4D52B4">'+fa(d===0?'۰':d)+'</div>'+
+      '<div class="info"><b>'+esc(r.title||r.type)+' — '+esc(c?fullName(c):'')+'</b>'+
+      '<span>'+fmtJ(r.date,true)+' · '+niceTime(r.startTime)+'</span></div>'+
+      '<div class="side"><span class="tag p">'+(d===0?'امروز':d===1?'فردا':fa(d)+' روز')+'</span></div></div>';
+  });
+  h+='</div>';
+
+  var nextD=list.filter(function(r){return r.project&&r.project.finalDelivery})
+    .sort(function(a,b){return dnum(a.project.finalDelivery)-dnum(b.project.finalDelivery)}).slice(0,5);
+  h+='<div class="card"><div class="card-h"><h3>📦 تحویل‌های نزدیک</h3></div>';
+  if(!nextD.length)h+='<div class="empty"><div class="em">📭</div><p>تحویلی ثبت نشده</p></div>';
+  else nextD.forEach(function(r){
+    var c=getCust(r.customerId),d=daysFromToday(r.project.finalDelivery);
+    var cls=d<0?'d':d<=3?'w':'g';
+    h+='<div class="item" data-act="openRes" data-id="'+r.id+'">'+
+      '<div class="av" style="background:#E8F5E1;color:#4A8C36">📦</div>'+
+      '<div class="info"><b>'+esc(c?fullName(c):'')+'</b>'+
+      '<span>'+fmtJ(r.project.finalDelivery)+' · '+STAGES[r.project.stage||0]+'</span></div>'+
+      '<div class="side"><span class="tag '+cls+'">'+(d<0?'عقب‌افتاده':d===0?'امروز':fa(d)+' روز')+'</span></div></div>';
+  });
+  h+='</div>';
+  return h;
+}
+function evRow(e){
+  var bg=e.color+'1F';
+  return '<div class="item" data-act="openRes" data-id="'+e.r.id+'" style="border-right:3px solid '+e.color+'">'+
+    '<div class="av" style="background:'+bg+';color:'+e.color+'">'+
+      (e.kind==='ceremony'?'💍':e.kind==='photo'?'📷':e.kind==='video'?'🎥':e.kind==='formal'?'✨':'📦')+
+    '</div>'+
+    '<div class="info"><b>'+esc(e.name)+'</b>'+
+    '<span>'+esc(e.title)+' · '+niceTime(e.start)+(e.end?' تا '+niceTime(e.end):'')+'</span></div>'+
+    '<div class="side"><span class="tag" style="background:'+bg+';color:'+e.color+'">'+KIND[e.kind].label+'</span></div>'+
+  '</div>';
+}
+
+/* ==================== CALENDAR ==================== */
+function vCalendar(){
+  var head=pageHead('تقویم',fmtJ({jy:state.calY,jm:state.calM,jd:1})+' '+fa(state.calY),
+    '<button class="btn btn-primary btn-sm" data-act="go" data-view="newres">➕ رزرو</button>');
+  var h=head+'<div class="content">';
+  h+='<div class="pill-tabs">'+
+    ['month','week','day'].map(function(m){
+      var l=m==='month'?'ماهانه':m==='week'?'هفتگی':'روزانه';
+      return '<button class="'+(state.calMode===m?'active':'')+'" data-act="calMode" data-mode="'+m+'">'+l+'</button>';
+    }).join('')+'</div>';
+  h+='<div class="chips">'+
+    '<button class="chip '+(state.calFilter==='all'?'active':'')+'" data-act="calFilter" data-f="all">همه</button>'+
+    Object.keys(KIND).map(function(k){
+      return '<button class="chip '+(state.calFilter===k?'active':'')+'" data-act="calFilter" data-f="'+k+'">'+
+        '<span class="dot" style="background:'+KIND[k].color+'"></span>'+KIND[k].label+'</button>';
+    }).join('')+'</div>';
+  if(state.calMode==='month')h+=monthView();
+  else if(state.calMode==='week')h+=weekView();
+  else h+=dayView();
+  h+='</div>';
+  return h;
+}
+function calNavHTML(){
+  return '<div class="cal-head"><div class="cal-nav">'+
+    '<button data-act="calPrev">‹</button>'+
+    '<button data-act="calToday" style="width:auto;padding:0 12px;font-size:12px;font-weight:600">امروز</button>'+
+    '<button data-act="calNext">›</button>'+
+  '</div><div class="cal-title">'+MONTHS[state.calM-1]+' '+fa(state.calY)+'</div></div>';
+}
+function filteredEvents(d){
+  var ev=eventsOn(d);
+  if(state.calFilter!=='all')ev=ev.filter(function(e){return e.kind===state.calFilter});
+  return ev;
+}
+function monthView(){
+  var cells=buildMonth(state.calY,state.calM);
+  var h=calNavHTML();
+  h+='<div class="card" style="padding:10px"><div class="cal-grid">';
+  WDS.forEach(function(w,i){
+    h+='<div class="cal-wd'+(i===6?' fri':'')+'">'+w+'</div>';
+  });
+  cells.forEach(function(c){
+    var isToday=(c.jy===TODAY.jy&&c.jm===TODAY.jm&&c.jd===TODAY.jd);
+    var isSel=(dkey(c)===state.selectedDay);
+    var ev=filteredEvents(c);
+    h+='<div class="cal-cell'+(c.out?' out':'')+(isToday?' today':'')+(isSel?' sel':'')+'" data-act="pickDay" data-key="'+dkey(c)+'">'+
+      '<div class="dnum"><span>'+fa(c.jd)+'</span>'+(ev.length?'<span style="font-size:9px;opacity:.6">'+fa(ev.length)+'</span>':'')+'</div>';
+    ev.slice(0,2).forEach(function(e){
+      h+='<div class="ev" style="background:'+e.color+'22;color:'+e.color+'">'+esc(e.name||e.title)+'</div>';
+    });
+    if(ev.length>2)h+='<div class="ev-more">+' + fa(ev.length-2) + ' مورد</div>';
+    h+='</div>';
+  });
+  h+='</div></div>';
+  var p=state.selectedDay.split('-');
+  var sel={jy:+p[0],jm:+p[1],jd:+p[2]};
+  var ev=filteredEvents(sel);
+  h+='<div class="card"><div class="card-h"><h3>'+fmtJ(sel,true)+'</h3>'+
+    '<button class="link" data-act="newOnDay" data-key="'+dkey(sel)+'">➕ افزودن</button></div>';
+  if(!ev.length)h+='<div class="empty"><div class="em">🗓️</div><p>برنامه‌ای برای این روز نیست</p></div>';
+  else ev.forEach(function(e){h+=evRow(e)});
+  h+='</div>';
+  return h;
+}
+function buildMonth(jy,jm){
+  var len=jMonthLen(jy,jm);
+  var firstWd=jWeekday(jy,jm,1);
+  var cells=[];
+  var pm=jm===1?12:jm-1,py=jm===1?jy-1:jy;
+  var plen=jMonthLen(py,pm);
+  for(var i=firstWd-1;i>=0;i--)cells.push({jy:py,jm:pm,jd:plen-i,out:true});
+  for(var d=1;d<=len;d++)cells.push({jy:jy,jm:jm,jd:d,out:false});
+  var nm=jm===12?1:jm+1,ny=jm===12?jy+1:jy;
+  var k=1;
+  while(cells.length%7!==0){cells.push({jy:ny,jm:nm,jd:k++,out:true})}
+  return cells;
+}
+function weekView(){
+  var p=state.selectedDay.split('-');
+  var sel={jy:+p[0],jm:+p[1],jd:+p[2]};
+  var wd=jWeekday(sel.jy,sel.jm,sel.jd);
+  var base=j2d(sel.jy,sel.jm,sel.jd)-wd;
+  var h='<div class="cal-head"><div class="cal-nav">'+
+    '<button data-act="calPrev">‹</button>'+
+    '<button data-act="calToday" style="width:auto;padding:0 12px;font-size:12px;font-weight:600">این هفته</button>'+
+    '<button data-act="calNext">›</button></div>'+
+    '<div class="cal-title">هفته '+fmtJ(sel)+'</div></div>';
+  h+='<div class="week-grid">';
+  for(var i=0;i<7;i++){
+    var jj=d2j(base+i);
+    var isToday=(jj.jy===TODAY.jy&&jj.jm===TODAY.jm&&jj.jd===TODAY.jd);
+    var ev=filteredEvents(jj);
+    h+='<div class="day-col'+(isToday?' today':'')+'"><h4>'+WD[i]+'<b>'+fa(jj.jd)+'</b></h4>';
+    if(!ev.length)h+='<div style="font-size:10px;color:#B9BECF;text-align:center;padding:6px">—</div>';
+    ev.forEach(function(e){
+      h+='<div class="day-ev" data-act="openRes" data-id="'+e.r.id+'" style="background:'+e.color+'20;border-color:'+e.color+';color:'+e.color+'">'+
+        niceTime(e.start)+'<br>'+esc(e.name||e.title)+'</div>';
+    });
+    h+='</div>';
+  }
+  return h+'</div>';
+}
+function dayView(){
+  var p=state.selectedDay.split('-');
+  var sel={jy:+p[0],jm:+p[1],jd:+p[2]};
+  var ev=filteredEvents(sel);
+  var h='<div class="cal-head"><div class="cal-nav">'+
+    '<button data-act="calPrev">‹</button>'+
+    '<button data-act="calToday" style="width:auto;padding:0 12px;font-size:12px;font-weight:600">امروز</button>'+
+    '<button data-act="calNext">›</button></div>'+
+    '<div class="cal-title">'+fmtJ(sel,true)+'</div></div>';
+  h+='<div class="card"><div class="card-h"><h3>برنامه‌های روز</h3>'+
+    '<button class="link" data-act="newOnDay" data-key="'+dkey(sel)+'">➕ افزودن</button></div>';
+  if(!ev.length)h+='<div class="empty"><div class="em">🗓️</div><p>برنامه‌ای ثبت نشده</p></div>';
+  else ev.forEach(function(e){h+=evRow(e)});
+  return h+'</div>';
+  }
 </script>
 </body>
 </html>
